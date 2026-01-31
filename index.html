@@ -571,7 +571,7 @@ ${resultsText}`;
                             {/* Left Title: Batch Number */}
                             <h1 className="text-3xl font-black text-slate-900 mb-1">{activeReport.clientName}</h1>
                             {/* Left Subtitle: Laudo ID */}
-                            <p className="text-lg font-bold text-indigo-600 mb-3">ID #{activeReport.customId}</p>
+                            <p className="text-lg font-bold text-indigo-600 mb-3">{activeReport.process}</p>
                             
                             <div className="flex items-center gap-4 text-sm text-slate-500 font-medium">
                               <span className="flex items-center gap-1"><Package size={14} /> Lote: {activeReport.batchNumber}</span>
