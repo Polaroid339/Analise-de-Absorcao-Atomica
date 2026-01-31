@@ -1,0 +1,1 @@
+// This file is no longer used. Code has been merged into index.html for a single-file application structure.

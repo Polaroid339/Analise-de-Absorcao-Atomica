@@ -1,0 +1,5 @@
+{
+  "name": "Análise de Absorção Atômica",
+  "description": "Professional tool for managing atomic absorption analysis reports (Cu, Zn) with support for duplicates, multiple digestions, and mesh yield tracking.",
+  "requestFramePermissions": []
+}
