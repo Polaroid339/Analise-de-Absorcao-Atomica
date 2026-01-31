@@ -18,10 +18,6 @@ Este projeto é uma aplicação web progressiva projetada para laboratórios de 
     -   Cálculo de rendimento por malhas (Retido #35, Retido #60 e Passante).
     -   Cálculo automático de porcentagem de massa e massa total.
 
--   **📸 Registro Fotográfico:**
-    -   Upload de fotos das amostras diretamente no laudo.
-    -   Adição de descrições detalhadas para cada imagem.
-
 -   **📊 Gestão de Dados:**
     -   **Pesquisa Inteligente:** Filtre laudos por ID, Cliente ou Lote.
     -   **Persistência Local:** Os dados são salvos automaticamente no navegador (LocalStorage).
