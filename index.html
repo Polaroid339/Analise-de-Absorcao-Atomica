@@ -407,8 +407,7 @@ ${resultsText}`;
               "Retido 35 (kg)": r.showGranulometry ? r.meshData.retained35g.toFixed(3) : "-",
               "Retido 60 (kg)": r.showGranulometry ? r.meshData.retained60g.toFixed(3) : "-",
               "Passante (kg)": r.showGranulometry ? r.meshData.passingG.toFixed(3) : "-",
-              "Elemento": e.element,
-              "Digestão": e.digestion,
+              "Elemento/Digestão": `${e.element} ${e.digestion}`,
               "Resultado (%)": e.finalPercentage.toFixed(2)
             }));
           });
