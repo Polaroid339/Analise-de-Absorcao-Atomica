@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
@@ -6,955 +6,959 @@
     <title>Análise de Absorção Atômica</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
+
     <script type="importmap">
-    {
-      "imports": {
-        "react": "https://esm.sh/react@18.2.0",
-        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-        "lucide-react": "https://esm.sh/lucide-react@0.344.0",
-        "xlsx": "https://esm.sh/xlsx@0.18.5"
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.344.0",
+          "xlsx": "https://esm.sh/xlsx@0.18.5"
+        }
       }
-    }
     </script>
     <script>
       // Polyfill to prevent errors if code references process.env
       window.process = { env: {} };
     </script>
-  <link rel="stylesheet" href="/index.css">
-</head>
+    <link rel="stylesheet" href="/index.css" />
+  </head>
   <body>
     <div id="root"></div>
-    
-    <script type="text/babel" data-type="module" data-presets="react,typescript">
-      import React, { useState, useEffect, useRef } from 'react';
-      import { createRoot } from 'react-dom/client';
-      import { 
-        FlaskConical, Plus, Trash2, Download, Search, User, Package, 
-        Layers, ClipboardList, Edit2, X, Calculator, Image as ImageIcon, 
-        Upload, Camera, Copy, ToggleLeft, ToggleRight, Hash, Save, 
-        FolderUp, FileJson 
-      } from 'lucide-react';
-      import * as XLSX from 'xlsx';
 
-      // --- CONSTANTS (Replaces Enums for runtime stability) ---
-      const Element = {
-        COPPER: 'Cu',
-        ZINC: 'Zn',
-        LEAD: 'Pb'
-      };
+    <script
+      type="text/babel"
+      data-type="module"
+      data-presets="react,typescript"
+    >
+            import React, { useState, useEffect, useRef } from 'react';
+            import { createRoot } from 'react-dom/client';
+            import {
+              FlaskConical, Plus, Trash2, Download, Search, User, Package,
+              Layers, ClipboardList, Edit2, X, Calculator, Image as ImageIcon,
+              Upload, Camera, Copy, ToggleLeft, ToggleRight, Hash, Save,
+              FolderUp, FileJson
+            } from 'lucide-react';
+            import * as XLSX from 'xlsx';
 
-      const DigestionMethod = {
-        AQUA_REGIA: 'Regia',
-        HCL: 'HCl'
-      };
-
-      // --- TYPES (Interfaces for type checking only) ---
-      interface AnalysisEntry {
-        id: string;
-        element: string;
-        digestion: string;
-        sampleWeight: number; 
-        finalVolume: number; 
-        dilutionFactor: number;
-        readings: (number | string)[]; 
-        averagePpm: number;
-        finalPercentage: number; 
-      }
-
-      interface MeshData {
-        retained35g: number;
-        retained60g: number;
-        passingG: number;
-      }
-
-      interface ReportPhoto {
-        id: string;
-        dataUrl: string;
-        description: string;
-        timestamp: number;
-      }
-
-      interface AnalysisReport {
-        id: string;
-        customId: string; 
-        clientName: string;
-        batchNumber: string;
-        process: string;
-        showGranulometry: boolean;
-        meshData: MeshData;
-        entries: AnalysisEntry[];
-        photos: ReportPhoto[];
-        timestamp: number;
-      }
-
-      // --- COMPONENTES UI ---
-
-      const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false, type = 'button' }) => {
-        const base = "px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm active:scale-95";
-        const variants = {
-          primary: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200",
-          secondary: "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 shadow-sm",
-          danger: "bg-white text-red-600 hover:bg-red-50 border border-red-100",
-          ghost: "bg-transparent text-slate-600 hover:bg-slate-100",
-          outline: "border-2 border-dashed border-slate-300 text-slate-500 hover:border-indigo-400 hover:text-indigo-600 bg-slate-50"
-        };
-        return (
-          <button type={type} onClick={onClick} className={`${base} ${variants[variant]} ${className}`} disabled={disabled}>
-            {children}
-          </button>
-        );
-      };
-
-      const SectionHeader = ({ icon, title, subtitle, action }) => (
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex items-start gap-3">
-            <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-lg">
-              {icon}
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-slate-800 uppercase tracking-wide">{title}</h3>
-              {subtitle && <p className="text-sm text-slate-400 font-medium">{subtitle}</p>}
-            </div>
-          </div>
-          {action && <div className="flex items-center gap-2">{action}</div>}
-        </div>
-      );
-
-      const Card = ({ children, className = "" }) => (
-        <div className={`bg-white rounded-2xl border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden ${className}`}>
-          {children}
-        </div>
-      );
-
-      // --- HELPERS ---
-
-      const toTitleCase = (str) => {
-        return str.replace(/\b\w/g, char => char.toUpperCase());
-      };
-
-      const calculateFinalPercentage = (entry) => {
-        const validReadings = entry.readings.filter(r => r !== "").map(Number);
-        const avgPpm = validReadings.length > 0 ? validReadings.reduce((a, b) => a + b, 0) / validReadings.length : 0;
-        
-        if (entry.sampleWeight <= 0) return 0;
-        return (avgPpm * entry.finalVolume * entry.dilutionFactor) / (entry.sampleWeight * 10000);
-      };
-
-      const getSortedEntries = (entries) => {
-        return [...entries].sort((a, b) => {
-          const getScore = (e) => {
-            if (e.element === Element.ZINC && e.digestion === DigestionMethod.AQUA_REGIA) return 1;
-            if (e.element === Element.ZINC && e.digestion === DigestionMethod.HCL) return 2;
-            if (e.element === Element.COPPER && e.digestion === DigestionMethod.AQUA_REGIA) return 3;
-            if (e.element === Element.COPPER && e.digestion === DigestionMethod.HCL) return 4;
-            if (e.element === Element.LEAD && e.digestion === DigestionMethod.AQUA_REGIA) return 5;
-            if (e.element === Element.LEAD && e.digestion === DigestionMethod.HCL) return 6;
-            return 7; 
-          };
-          return getScore(a) - getScore(b);
-        });
-      };
-
-      // --- APLICAÇÃO PRINCIPAL ---
-
-      function App() {
-        const [reports, setReports] = useState([]);
-        const [showForm, setShowForm] = useState(false);
-        const [editingId, setEditingId] = useState(null);
-        const [activeReportId, setActiveReportId] = useState(null);
-        const [searchTerm, setSearchTerm] = useState('');
-        const fileInputRef = useRef(null);
-        const jsonImportRef = useRef(null);
-
-        // Form State
-        const [customId, setCustomId] = useState('');
-        const [client, setClient] = useState('');
-        const [batch, setBatch] = useState('');
-        const [processType, setProcessType] = useState('');
-        const [showGranulometry, setShowGranulometry] = useState(false);
-        const [meshG, setMeshG] = useState({ retained35g: 0, retained60g: 0, passingG: 0 });
-        const [entries, setEntries] = useState([]);
-        const [photos, setPhotos] = useState([]);
-
-        useEffect(() => {
-          const saved = localStorage.getItem('labatom_reports_v5');
-          if (saved) setReports(JSON.parse(saved));
-        }, []);
-
-        useEffect(() => {
-          localStorage.setItem('labatom_reports_v5', JSON.stringify(reports));
-        }, [reports]);
-
-        const getNextId = () => {
-          if (reports.length === 0) return "1";
-          const numbers = reports.map(r => parseInt(r.customId)).filter(n => !isNaN(n));
-          if (numbers.length === 0) return "1";
-          return (Math.max(...numbers) + 1).toString();
-        };
-
-        const resetForm = () => {
-          setCustomId(getNextId());
-          setClient('');
-          setBatch('');
-          setProcessType('');
-          setShowGranulometry(false);
-          setMeshG({ retained35g: 0, retained60g: 0, passingG: 0 });
-          setEntries([]);
-          setPhotos([]);
-          setEditingId(null);
-        };
-
-        const handleEdit = (report) => {
-          setCustomId(report.customId || report.id.slice(0,6));
-          setClient(report.clientName);
-          setBatch(report.batchNumber === "Sem Lote" ? "" : report.batchNumber);
-          setProcessType(report.process);
-          setShowGranulometry(!!report.showGranulometry);
-          setMeshG(report.meshData);
-          setEntries(report.entries);
-          setPhotos(report.photos || []);
-          setEditingId(report.id);
-          setShowForm(true);
-        };
-
-        const addEntry = () => {
-          const newEntry = {
-            id: crypto.randomUUID(),
-            element: Element.COPPER,
-            digestion: DigestionMethod.AQUA_REGIA,
-            sampleWeight: 1.0,
-            finalVolume: 100,
-            dilutionFactor: 1,
-            readings: [''], 
-            averagePpm: 0,
-            finalPercentage: 0
-          };
-          setEntries([...entries, newEntry]);
-        };
-
-        const updateEntry = (id, updates) => {
-          setEntries(entries.map(e => {
-            if (e.id === id) {
-              const updated = { ...e, ...updates };
-              const validReadings = updated.readings.filter(r => r !== "").map(Number);
-              updated.averagePpm = validReadings.length > 0 ? validReadings.reduce((a, b) => a + b, 0) / validReadings.length : 0;
-              updated.finalPercentage = calculateFinalPercentage(updated);
-              return updated;
-            }
-            return e;
-          }));
-        };
-
-        const handlePhotoUpload = (e) => {
-          if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              const newPhoto = {
-                id: crypto.randomUUID(),
-                dataUrl: reader.result,
-                description: '',
-                timestamp: Date.now()
-              };
-              setPhotos([...photos, newPhoto]);
+            // --- CONSTANTS (Replaces Enums for runtime stability) ---
+            const Element = {
+              COPPER: 'Cu',
+              ZINC: 'Zn',
+              LEAD: 'Pb'
             };
-            reader.readAsDataURL(file);
-          }
-        };
 
-        const updatePhotoDescription = (id, desc) => {
-          setPhotos(photos.map(p => p.id === id ? { ...p, description: desc } : p));
-        };
+            const DigestionMethod = {
+              AQUA_REGIA: 'Regia',
+              HCL: 'HCl'
+            };
 
-        const removePhoto = (id) => {
-          setPhotos(photos.filter(p => p.id !== id));
-        };
-
-        const saveReport = () => {
-          const finalClient = client.trim() === "" ? "Sem Cliente" : client;
-          const finalBatch = batch.trim() === "" ? "Sem Lote" : batch;
-          const finalProcess = processType.trim() === "" ? "Sem Processo" : processType;
-          const finalCustomId = customId.trim() === "" ? getNextId() : customId;
-
-          const reportData = {
-            id: editingId || crypto.randomUUID(),
-            customId: finalCustomId,
-            clientName: finalClient,
-            batchNumber: finalBatch,
-            process: finalProcess,
-            showGranulometry: showGranulometry,
-            meshData: meshG,
-            entries: entries,
-            photos: photos,
-            timestamp: Date.now()
-          };
-
-          if (editingId) {
-            setReports(reports.map(r => r.id === editingId ? reportData : r));
-          } else {
-            setReports([reportData, ...reports]);
-          }
-          
-          setShowForm(false);
-          resetForm();
-          setActiveReportId(reportData.id);
-        };
-
-        const handleCopySummary = (report) => {
-          let granText = "";
-          if (report.showGranulometry) {
-            const total = report.meshData.retained35g + report.meshData.retained60g + report.meshData.passingG;
-            const retained35Pct = total > 0 ? (report.meshData.retained35g / total) * 100 : 0;
-            const retained60Pct = total > 0 ? (report.meshData.retained60g / total) * 100 : 0;
-            const passantePct = total > 0 ? (report.meshData.passingG / total) * 100 : 0;
-            
-            const line35 = `▪️ Ret.35: ${report.meshData.retained35g.toFixed(3)} kg | ${retained35Pct.toFixed(2).replace('.', ',')}%`;
-            const line60 = report.meshData.retained60g > 0 
-              ? `\n▪️ Ret.60: ${report.meshData.retained60g.toFixed(3)} kg | ${retained60Pct.toFixed(2).replace('.', ',')}%`
-              : "";
-            const linePass = `\n▪️ Pass: ${report.meshData.passingG.toFixed(3)} kg | ${passantePct.toFixed(2).replace('.', ',')}%`;
-            
-            granText = `\n⚖️ RENDIMENTO
-━━━━━━━━━━━━━━━━━━━━━━━━━━  
-${line35}${line60}${linePass}\n`;
-          }
-
-          let resultsText = "";
-          const sortedEntries = getSortedEntries(report.entries);
-          sortedEntries.forEach(e => {
-            const elem = e.element; 
-            const dig = e.digestion; 
-            const val = e.finalPercentage.toFixed(2).replace('.', ',');
-            resultsText += `🔹 ${elem} ${dig}: ${val}%\n`;
-          });
-
-          const text = `📂 RESULTADO DE ANÁLISE
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-▪️ Cliente:  ${report.clientName}
-▪️ Material: ${report.batchNumber}
-▪️ Processo: ${report.process}
-${granText}
-🔬 RESULTADOS
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-${resultsText}`;
-
-          navigator.clipboard.writeText(text).then(() => {
-            alert("Resumo copiado para a área de transferência!");
-          });
-        };
-
-        const backupData = () => {
-          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(reports));
-          const downloadAnchorNode = document.createElement('a');
-          downloadAnchorNode.setAttribute("href", dataStr);
-          downloadAnchorNode.setAttribute("download", `Backup_Analises_${new Date().toISOString().slice(0,10)}.json`);
-          document.body.appendChild(downloadAnchorNode);
-          downloadAnchorNode.click();
-          downloadAnchorNode.remove();
-        };
-
-        const restoreData = (e) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            try {
-              const json = JSON.parse(event.target?.result);
-              if (Array.isArray(json)) {
-                if (confirm("Isso substituirá todos os laudos atuais. Deseja continuar?")) {
-                  setReports(json);
-                  alert("Backup restaurado com sucesso!");
-                }
-              } else {
-                alert("Arquivo de backup inválido.");
-              }
-            } catch (err) {
-              alert("Erro ao ler arquivo de backup.");
+            // --- TYPES (Interfaces for type checking only) ---
+            interface AnalysisEntry {
+              id: string;
+              element: string;
+              digestion: string;
+              sampleWeight: number;
+              finalVolume: number;
+              dilutionFactor: number;
+              readings: (number | string)[];
+              averagePpm: number;
+              finalPercentage: number;
             }
-          };
-          reader.readAsText(file);
-          e.target.value = '';
-        };
 
-        const totalG = meshG.retained35g + meshG.retained60g + meshG.passingG;
-        const meshPct = {
-          m35: totalG > 0 ? (meshG.retained35g / totalG) * 100 : 0,
-          m60: totalG > 0 ? (meshG.retained60g / totalG) * 100 : 0,
-          pass: totalG > 0 ? (meshG.passingG / totalG) * 100 : 0
-        };
+            interface MeshData {
+              retained35g: number;
+              retained60g: number;
+              passingG: number;
+            }
 
-        const filteredReports = reports.filter(r => 
-          r.clientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-          r.batchNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (r.customId && r.customId.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
+            interface ReportPhoto {
+              id: string;
+              dataUrl: string;
+              description: string;
+              timestamp: number;
+            }
 
-        const activeReport = reports.find(r => r.id === activeReportId);
+            interface AnalysisReport {
+              id: string;
+              customId: string;
+              clientName: string;
+              batchNumber: string;
+              process: string;
+              showGranulometry: boolean;
+              meshData: MeshData;
+              entries: AnalysisEntry[];
+              photos: ReportPhoto[];
+              timestamp: number;
+            }
 
-        const exportToExcel = () => {
-          const data = reports.flatMap(r => {
-            const tot = r.meshData.retained35g + r.meshData.retained60g + r.meshData.passingG;
-            return getSortedEntries(r.entries).map(e => ({
-              "ID": r.customId,
-              "Data": new Date(r.timestamp).toLocaleDateString(),
-              "Cliente": r.clientName,
-              "Lote": r.batchNumber,
-              "Processo": r.process,
-              "Granulometria": r.showGranulometry ? "Sim" : "Não",
-              "Peso Total (kg)": r.showGranulometry ? tot.toFixed(3) : "-",
-              "Retido 35 (kg)": r.showGranulometry ? r.meshData.retained35g.toFixed(3) : "-",
-              "Retido 60 (kg)": r.showGranulometry ? r.meshData.retained60g.toFixed(3) : "-",
-              "Passante (kg)": r.showGranulometry ? r.meshData.passingG.toFixed(3) : "-",
-              "Elemento/Digestão": `${e.element} ${e.digestion}`,
-              "Resultado (%)": e.finalPercentage.toFixed(2)
-            }));
-          });
-          const ws = XLSX.utils.json_to_sheet(data);
-          const wb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb, ws, "Dados");
-          XLSX.writeFile(wb, `Laudos_${new Date().toISOString().slice(0,10)}.xlsx`);
-        };
+            // --- COMPONENTES UI ---
 
-        return (
-          <div className="min-h-screen bg-[#F1F5F9] text-slate-800 font-sans selection:bg-indigo-100 selection:text-indigo-900">
-            
-            {/* Header */}
-            <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40 supports-[backdrop-filter]:bg-white/60">
-              <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="bg-gradient-to-tr from-indigo-600 to-violet-600 p-2.5 rounded-xl text-white shadow-lg shadow-indigo-200">
-                    <FlaskConical size={24} strokeWidth={2.5} />
+            const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false, type = 'button' }) => {
+              const base = "px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm active:scale-95";
+              const variants = {
+                primary: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200",
+                secondary: "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 shadow-sm",
+                danger: "bg-white text-red-600 hover:bg-red-50 border border-red-100",
+                ghost: "bg-transparent text-slate-600 hover:bg-slate-100",
+                outline: "border-2 border-dashed border-slate-300 text-slate-500 hover:border-indigo-400 hover:text-indigo-600 bg-slate-50"
+              };
+              return (
+                <button type={type} onClick={onClick} className={`${base} ${variants[variant]} ${className}`} disabled={disabled}>
+                  {children}
+                </button>
+              );
+            };
+
+            const SectionHeader = ({ icon, title, subtitle, action }) => (
+              <div className="flex items-start justify-between mb-6">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-lg">
+                    {icon}
                   </div>
                   <div>
-                    <h1 className="text-xl font-bold tracking-tight text-slate-900 leading-none">Análise de Absorção Atômica</h1>
-                    <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest"></p>
+                    <h3 className="text-base font-bold text-slate-800 uppercase tracking-wide">{title}</h3>
+                    {subtitle && <p className="text-sm text-slate-400 font-medium">{subtitle}</p>}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="relative hidden lg:block group">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
-                    <input 
-                      type="text" 
-                      placeholder="Pesquisar ID, Cliente..."
-                      className="pl-11 pr-4 py-2.5 bg-slate-100 border-2 border-transparent rounded-xl text-sm font-medium focus:bg-white focus:border-indigo-100 focus:ring-4 focus:ring-indigo-50 w-72 outline-none transition-all"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </div>
-                  <Button onClick={() => { resetForm(); setShowForm(true); }}>
-                    <Plus size={18} strokeWidth={2.5} /> <span className="hidden sm:inline">Novo Laudo</span>
-                  </Button>
-                </div>
+                {action && <div className="flex items-center gap-2">{action}</div>}
               </div>
-            </header>
+            );
 
-            <main className="max-w-7xl mx-auto px-4 py-8">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                
-                {/* Sidebar */}
-                <div className="lg:col-span-4 space-y-6">
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center justify-between px-1">
-                      <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <ClipboardList size={14} /> Laudos Registrados
-                      </h2>
-                      <button onClick={exportToExcel} className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-md transition-colors">
-                        <Download size={12} /> Excel
-                      </button>
-                    </div>
-                    
-                    {/* More Visible Backup/Restore Buttons */}
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={backupData} 
-                        className="flex-1 flex items-center justify-center gap-2 bg-white border-2 border-slate-200 text-slate-600 hover:border-indigo-500 hover:text-indigo-600 py-2 rounded-xl text-xs font-bold transition-all shadow-sm"
-                        title="Salvar backup em JSON"
-                      >
-                        <Save size={14}/> Salvar
-                      </button>
-                      <button 
-                        onClick={() => jsonImportRef.current?.click()} 
-                        className="flex-1 flex items-center justify-center gap-2 bg-white border-2 border-slate-200 text-slate-600 hover:border-indigo-500 hover:text-indigo-600 py-2 rounded-xl text-xs font-bold transition-all shadow-sm"
-                        title="Restaurar backup"
-                      >
-                        <FolderUp size={14}/> Carregar
-                      </button>
-                      <input type="file" ref={jsonImportRef} onChange={restoreData} className="hidden" accept=".json" />
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-200px)] pr-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-                    {filteredReports.map(r => (
-                      <div 
-                        key={r.id}
-                        onClick={() => { setActiveReportId(r.id); }}
-                        className={`p-5 rounded-2xl border-2 transition-all cursor-pointer relative group ${
-                          activeReportId === r.id 
-                          ? 'border-indigo-500 bg-white shadow-lg shadow-indigo-100' 
-                          : 'border-white bg-white hover:border-indigo-200 hover:shadow-md'
-                        }`}
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black bg-indigo-50 text-indigo-700 uppercase tracking-wider">
-                            #{r.customId || 'N/A'}
-                          </span>
-                          <span className="text-[11px] font-semibold text-slate-400">
-                            {new Date(r.timestamp).toLocaleDateString()}
-                          </span>
+            const Card = ({ children, className = "" }) => (
+              <div className={`bg-white rounded-2xl border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden ${className}`}>
+                {children}
+              </div>
+            );
+
+            // --- HELPERS ---
+
+            const toTitleCase = (str) => {
+              return str.replace(/\b\w/g, char => char.toUpperCase());
+            };
+
+            const calculateFinalPercentage = (entry) => {
+              const validReadings = entry.readings.filter(r => r !== "").map(Number);
+              const avgPpm = validReadings.length > 0 ? validReadings.reduce((a, b) => a + b, 0) / validReadings.length : 0;
+
+              if (entry.sampleWeight <= 0) return 0;
+              return (avgPpm * entry.finalVolume * entry.dilutionFactor) / (entry.sampleWeight * 10000);
+            };
+
+            const getSortedEntries = (entries) => {
+              return [...entries].sort((a, b) => {
+                const getScore = (e) => {
+                  if (e.element === Element.ZINC && e.digestion === DigestionMethod.AQUA_REGIA) return 1;
+                  if (e.element === Element.ZINC && e.digestion === DigestionMethod.HCL) return 2;
+                  if (e.element === Element.COPPER && e.digestion === DigestionMethod.AQUA_REGIA) return 3;
+                  if (e.element === Element.COPPER && e.digestion === DigestionMethod.HCL) return 4;
+                  if (e.element === Element.LEAD && e.digestion === DigestionMethod.AQUA_REGIA) return 5;
+                  if (e.element === Element.LEAD && e.digestion === DigestionMethod.HCL) return 6;
+                  return 7;
+                };
+                return getScore(a) - getScore(b);
+              });
+            };
+
+            // --- APLICAÇÃO PRINCIPAL ---
+
+            function App() {
+              const [reports, setReports] = useState([]);
+              const [showForm, setShowForm] = useState(false);
+              const [editingId, setEditingId] = useState(null);
+              const [activeReportId, setActiveReportId] = useState(null);
+              const [searchTerm, setSearchTerm] = useState('');
+              const fileInputRef = useRef(null);
+              const jsonImportRef = useRef(null);
+
+              // Form State
+              const [customId, setCustomId] = useState('');
+              const [client, setClient] = useState('');
+              const [batch, setBatch] = useState('');
+              const [processType, setProcessType] = useState('');
+              const [showGranulometry, setShowGranulometry] = useState(false);
+              const [meshG, setMeshG] = useState({ retained35g: 0, retained60g: 0, passingG: 0 });
+              const [entries, setEntries] = useState([]);
+              const [photos, setPhotos] = useState([]);
+
+              useEffect(() => {
+                const saved = localStorage.getItem('labatom_reports_v5');
+                if (saved) setReports(JSON.parse(saved));
+              }, []);
+
+              useEffect(() => {
+                localStorage.setItem('labatom_reports_v5', JSON.stringify(reports));
+              }, [reports]);
+
+              const getNextId = () => {
+                if (reports.length === 0) return "1";
+                const numbers = reports.map(r => parseInt(r.customId)).filter(n => !isNaN(n));
+                if (numbers.length === 0) return "1";
+                return (Math.max(...numbers) + 1).toString();
+              };
+
+              const resetForm = () => {
+                setCustomId(getNextId());
+                setClient('');
+                setBatch('');
+                setProcessType('');
+                setShowGranulometry(false);
+                setMeshG({ retained35g: 0, retained60g: 0, passingG: 0 });
+                setEntries([]);
+                setPhotos([]);
+                setEditingId(null);
+              };
+
+              const handleEdit = (report) => {
+                setCustomId(report.customId || report.id.slice(0,6));
+                setClient(report.clientName);
+                setBatch(report.batchNumber === "Sem Lote" ? "" : report.batchNumber);
+                setProcessType(report.process);
+                setShowGranulometry(!!report.showGranulometry);
+                setMeshG(report.meshData);
+                setEntries(report.entries);
+                setPhotos(report.photos || []);
+                setEditingId(report.id);
+                setShowForm(true);
+              };
+
+              const addEntry = () => {
+                const newEntry = {
+                  id: crypto.randomUUID(),
+                  element: Element.COPPER,
+                  digestion: DigestionMethod.AQUA_REGIA,
+                  sampleWeight: 1.0,
+                  finalVolume: 100,
+                  dilutionFactor: 1,
+                  readings: [''],
+                  averagePpm: 0,
+                  finalPercentage: 0
+                };
+                setEntries([...entries, newEntry]);
+              };
+
+              const updateEntry = (id, updates) => {
+                setEntries(entries.map(e => {
+                  if (e.id === id) {
+                    const updated = { ...e, ...updates };
+                    const validReadings = updated.readings.filter(r => r !== "").map(Number);
+                    updated.averagePpm = validReadings.length > 0 ? validReadings.reduce((a, b) => a + b, 0) / validReadings.length : 0;
+                    updated.finalPercentage = calculateFinalPercentage(updated);
+                    return updated;
+                  }
+                  return e;
+                }));
+              };
+
+              const handlePhotoUpload = (e) => {
+                if (e.target.files && e.target.files[0]) {
+                  const file = e.target.files[0];
+                  const reader = new FileReader();
+                  reader.onloadend = () => {
+                    const newPhoto = {
+                      id: crypto.randomUUID(),
+                      dataUrl: reader.result,
+                      description: '',
+                      timestamp: Date.now()
+                    };
+                    setPhotos([...photos, newPhoto]);
+                  };
+                  reader.readAsDataURL(file);
+                }
+              };
+
+              const updatePhotoDescription = (id, desc) => {
+                setPhotos(photos.map(p => p.id === id ? { ...p, description: desc } : p));
+              };
+
+              const removePhoto = (id) => {
+                setPhotos(photos.filter(p => p.id !== id));
+              };
+
+              const saveReport = () => {
+                const finalClient = client.trim() === "" ? "Sem Cliente" : client;
+                const finalBatch = batch.trim() === "" ? "Sem Lote" : batch;
+                const finalProcess = processType.trim() === "" ? "Sem Processo" : processType;
+                const finalCustomId = customId.trim() === "" ? getNextId() : customId;
+
+                const reportData = {
+                  id: editingId || crypto.randomUUID(),
+                  customId: finalCustomId,
+                  clientName: finalClient,
+                  batchNumber: finalBatch,
+                  process: finalProcess,
+                  showGranulometry: showGranulometry,
+                  meshData: meshG,
+                  entries: entries,
+                  photos: photos,
+                  timestamp: Date.now()
+                };
+
+                if (editingId) {
+                  setReports(reports.map(r => r.id === editingId ? reportData : r));
+                } else {
+                  setReports([reportData, ...reports]);
+                }
+
+                setShowForm(false);
+                resetForm();
+                setActiveReportId(reportData.id);
+              };
+
+              const handleCopySummary = (report) => {
+                let granText = "";
+                if (report.showGranulometry) {
+                  const total = report.meshData.retained35g + report.meshData.retained60g + report.meshData.passingG;
+                  const retained35Pct = total > 0 ? (report.meshData.retained35g / total) * 100 : 0;
+                  const retained60Pct = total > 0 ? (report.meshData.retained60g / total) * 100 : 0;
+                  const passantePct = total > 0 ? (report.meshData.passingG / total) * 100 : 0;
+
+                  const line35 = `▪️ Ret.35: ${report.meshData.retained35g.toFixed(3)} kg | ${retained35Pct.toFixed(2).replace('.', ',')}%`;
+                  const line60 = report.meshData.retained60g > 0
+                    ? `\n▪️ Ret.60: ${report.meshData.retained60g.toFixed(3)} kg | ${retained60Pct.toFixed(2).replace('.', ',')}%`
+                    : "";
+                  const linePass = `\n▪️ Pass: ${report.meshData.passingG.toFixed(3)} kg | ${passantePct.toFixed(2).replace('.', ',')}%`;
+
+                  granText = `\n⚖️ RENDIMENTO
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ${line35}${line60}${linePass}\n`;
+                }
+
+                let resultsText = "";
+                const sortedEntries = getSortedEntries(report.entries);
+                sortedEntries.forEach(e => {
+                  const elem = e.element;
+                  const dig = e.digestion;
+                  const val = e.finalPercentage.toFixed(2).replace('.', ',');
+                  resultsText += `🔹 ${elem} ${dig}: ${val}%\n`;
+                });
+
+                const text = `📂 RESULTADO DE ANÁLISE
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▪️ Cliente:  ${report.clientName}
+      ▪️ Material: ${report.batchNumber}
+      ▪️ Processo: ${report.process}
+      ${granText}
+      🔬 RESULTADOS
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ${resultsText}`;
+
+                navigator.clipboard.writeText(text).then(() => {
+                  alert("Resumo copiado para a área de transferência!");
+                });
+              };
+
+              const backupData = () => {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(reports));
+                const downloadAnchorNode = document.createElement('a');
+                downloadAnchorNode.setAttribute("href", dataStr);
+                downloadAnchorNode.setAttribute("download", `Backup_Analises_${new Date().toISOString().slice(0,10)}.json`);
+                document.body.appendChild(downloadAnchorNode);
+                downloadAnchorNode.click();
+                downloadAnchorNode.remove();
+              };
+
+              const restoreData = (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                  try {
+                    const json = JSON.parse(event.target?.result);
+                    if (Array.isArray(json)) {
+                      if (confirm("Isso substituirá todos os laudos atuais. Deseja continuar?")) {
+                        setReports(json);
+                        alert("Backup restaurado com sucesso!");
+                      }
+                    } else {
+                      alert("Arquivo de backup inválido.");
+                    }
+                  } catch (err) {
+                    alert("Erro ao ler arquivo de backup.");
+                  }
+                };
+                reader.readAsText(file);
+                e.target.value = '';
+              };
+
+              const totalG = meshG.retained35g + meshG.retained60g + meshG.passingG;
+              const meshPct = {
+                m35: totalG > 0 ? (meshG.retained35g / totalG) * 100 : 0,
+                m60: totalG > 0 ? (meshG.retained60g / totalG) * 100 : 0,
+                pass: totalG > 0 ? (meshG.passingG / totalG) * 100 : 0
+              };
+
+              const filteredReports = reports.filter(r =>
+                r.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                r.batchNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (r.customId && r.customId.toLowerCase().includes(searchTerm.toLowerCase()))
+              );
+
+              const activeReport = reports.find(r => r.id === activeReportId);
+
+              const exportToExcel = () => {
+                const data = reports.flatMap(r => {
+                  const tot = r.meshData.retained35g + r.meshData.retained60g + r.meshData.passingG;
+                  return getSortedEntries(r.entries).map(e => ({
+                    "ID": r.customId,
+                    "Data": new Date(r.timestamp).toLocaleDateString(),
+                    "Cliente": r.clientName,
+                    "Lote": r.batchNumber,
+                    "Processo": r.process,
+                    "Granulometria": r.showGranulometry ? "Sim" : "Não",
+                    "Peso Total (kg)": r.showGranulometry ? tot.toFixed(3) : "-",
+                    "Retido 35 (kg)": r.showGranulometry ? r.meshData.retained35g.toFixed(3) : "-",
+                    "Retido 60 (kg)": r.showGranulometry ? r.meshData.retained60g.toFixed(3) : "-",
+                    "Passante (kg)": r.showGranulometry ? r.meshData.passingG.toFixed(3) : "-",
+                    "Digestão": `${e.element} ${e.digestion}`,
+                    "Resultado (%)": e.finalPercentage.toFixed(2)
+                  }));
+                });
+                const ws = XLSX.utils.json_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Dados");
+                XLSX.writeFile(wb, `Laudos_${new Date().toISOString().slice(0,10)}.xlsx`);
+              };
+
+              return (
+                <div className="min-h-screen bg-[#F1F5F9] text-slate-800 font-sans selection:bg-indigo-100 selection:text-indigo-900">
+
+                  {/* Header */}
+                  <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40 supports-[backdrop-filter]:bg-white/60">
+                    <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-gradient-to-tr from-indigo-600 to-violet-600 p-2.5 rounded-xl text-white shadow-lg shadow-indigo-200">
+                          <FlaskConical size={24} strokeWidth={2.5} />
                         </div>
-                        <h4 className="font-bold text-slate-800 text-base leading-tight mb-1">{r.clientName}</h4>
-                        <p className="text-xs font-medium text-slate-500 mb-4">{r.batchNumber} - {r.process}</p>
-                        
-                        <div className="flex flex-wrap gap-2">
-                          {getSortedEntries(r.entries).map(e => (
-                            <div key={e.id} className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-100 rounded-md">
-                              <span className={`w-2 h-2 rounded-full ${e.element === Element.COPPER ? 'bg-orange-400' : e.element === Element.ZINC ? 'bg-zinc-400' : 'bg-slate-600'}`}></span>
-                              <span className="text-[10px] font-bold text-slate-600 uppercase">{e.element}</span>
-                              <span className="text-[10px] font-mono font-bold text-slate-900">{e.finalPercentage.toFixed(2)}%</span>
+                        <div>
+                          <h1 className="text-xl font-bold tracking-tight text-slate-900 leading-none">Análise de Absorção Atômica</h1>
+                          <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest"></p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="relative hidden lg:block group">
+                          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
+                          <input
+                            type="text"
+                            placeholder="Pesquisar ID, Cliente..."
+                            className="pl-11 pr-4 py-2.5 bg-slate-100 border-2 border-transparent rounded-xl text-sm font-medium focus:bg-white focus:border-indigo-100 focus:ring-4 focus:ring-indigo-50 w-72 outline-none transition-all"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                          />
+                        </div>
+                        <Button onClick={() => { resetForm(); setShowForm(true); }}>
+                          <Plus size={18} strokeWidth={2.5} /> <span className="hidden sm:inline">Novo Laudo</span>
+                        </Button>
+                      </div>
+                    </div>
+                  </header>
+
+                  <main className="max-w-7xl mx-auto px-4 py-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+
+                      {/* Sidebar */}
+                      <div className="lg:col-span-4 space-y-6">
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center justify-between px-1">
+                            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                              <ClipboardList size={14} /> Laudos Registrados
+                            </h2>
+                            <button onClick={exportToExcel} className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-md transition-colors">
+                              <Download size={12} /> Excel
+                            </button>
+                          </div>
+
+                          {/* More Visible Backup/Restore Buttons */}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={backupData}
+                              className="flex-1 flex items-center justify-center gap-2 bg-white border-2 border-slate-200 text-slate-600 hover:border-indigo-500 hover:text-indigo-600 py-2 rounded-xl text-xs font-bold transition-all shadow-sm"
+                              title="Salvar backup em JSON"
+                            >
+                              <Save size={14}/> Salvar
+                            </button>
+                            <button
+                              onClick={() => jsonImportRef.current?.click()}
+                              className="flex-1 flex items-center justify-center gap-2 bg-white border-2 border-slate-200 text-slate-600 hover:border-indigo-500 hover:text-indigo-600 py-2 rounded-xl text-xs font-bold transition-all shadow-sm"
+                              title="Restaurar backup"
+                            >
+                              <FolderUp size={14}/> Carregar
+                            </button>
+                            <input type="file" ref={jsonImportRef} onChange={restoreData} className="hidden" accept=".json" />
+                          </div>
+                        </div>
+
+                        <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-200px)] pr-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                          {filteredReports.map(r => (
+                            <div
+                              key={r.id}
+                              onClick={() => { setActiveReportId(r.id); }}
+                              className={`p-5 rounded-2xl border-2 transition-all cursor-pointer relative group ${
+                                activeReportId === r.id
+                                ? 'border-indigo-500 bg-white shadow-lg shadow-indigo-100'
+                                : 'border-white bg-white hover:border-indigo-200 hover:shadow-md'
+                              }`}
+                            >
+                              <div className="flex justify-between items-start mb-2">
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black bg-indigo-50 text-indigo-700 uppercase tracking-wider">
+                                  #{r.customId || 'N/A'}
+                                </span>
+                                <span className="text-[11px] font-semibold text-slate-400">
+                                  {new Date(r.timestamp).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <h4 className="font-bold text-slate-800 text-base leading-tight mb-1">{r.clientName}</h4>
+                              <p className="text-xs font-medium text-slate-500 mb-4">{r.batchNumber} - {r.process}</p>
+
+                              <div className="flex flex-wrap gap-2">
+                                {getSortedEntries(r.entries).map(e => (
+                                  <div key={e.id} className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-100 rounded-md">
+                                    <span className={`w-2 h-2 rounded-full ${e.element === Element.COPPER ? 'bg-orange-400' : e.element === Element.ZINC ? 'bg-zinc-400' : 'bg-slate-600'}`}></span>
+                                    <span className="text-[10px] font-bold text-slate-600 uppercase">{e.element}</span>
+                                    <span className="text-[10px] font-mono font-bold text-slate-900">{e.finalPercentage.toFixed(2)}%</span>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           ))}
-                        </div>
-                      </div>
-                    ))}
-                    {filteredReports.length === 0 && (
-                      <div className="py-24 text-center">
-                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <Search size={24} className="text-slate-300" />
-                        </div>
-                        <p className="text-sm font-medium text-slate-400">Nenhum laudo encontrado</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Main Content */}
-                <div className="lg:col-span-8">
-                  {activeReport ? (
-                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                      
-                      {/* Actions Bar */}
-                      <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-                        <div className="flex items-center gap-2">
-                          <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 font-bold text-lg">
-                            {activeReport.clientName.charAt(0)}
-                          </div>
-                          <div>
-                            <h2 className="text-sm font-bold text-slate-900">{activeReport.clientName}</h2>
-                            <p className="text-xs text-slate-500 font-mono">ID: {activeReport.customId}</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                            <Button variant="secondary" onClick={() => handleEdit(activeReport)}>
-                              <Edit2 size={16} /> <span className="hidden sm:inline">Editar</span>
-                            </Button>
-                            <Button variant="secondary" onClick={() => handleCopySummary(activeReport)} className="text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100">
-                              <Copy size={16} /> <span className="hidden sm:inline">Copiar</span>
-                            </Button>
-                            <Button variant="danger" onClick={() => {
-                              if(confirm("Excluir permanentemente?")) {
-                                setReports(reports.filter(r => r.id !== activeReport.id));
-                                setActiveReportId(null);
-                              }
-                            }}>
-                              <Trash2 size={16} />
-                            </Button>
-                        </div>
-                      </div>
-
-                      <Card className="p-8 print:shadow-none print:border-none">
-                        {/* Header Report */}
-                        <div className="border-b-2 border-slate-100 pb-8 mb-8 flex justify-between items-start">
-                          <div>
-                            {/* Left Title: Batch Number */}
-                            <h1 className="text-3xl font-black text-slate-900 mb-1">{activeReport.clientName}</h1>
-                            {/* Left Subtitle: Laudo ID */}
-                            <p className="text-lg font-bold text-indigo-600 mb-3">{activeReport.process}</p>
-                            
-                            <div className="flex items-center gap-4 text-sm text-slate-500 font-medium">
-                              <span className="flex items-center gap-1"><Package size={14} /> Lote: {activeReport.batchNumber}</span>
-                              <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                              <span className="flex items-center gap-1"><Layers size={14} /> {activeReport.process}</span>
-                              <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                              <span>{new Date(activeReport.timestamp).toLocaleDateString()}</span>
+                          {filteredReports.length === 0 && (
+                            <div className="py-24 text-center">
+                              <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Search size={24} className="text-slate-300" />
+                              </div>
+                              <p className="text-sm font-medium text-slate-400">Nenhum laudo encontrado</p>
                             </div>
-                          </div>
-                          <div className="text-right hidden sm:block">
-                            {/* Right Box: Batch Number */}
-                            <div className="inline-block bg-slate-900 text-white px-4 py-2 rounded-lg font-mono font-bold text-lg">
-                              {activeReport.batchNumber}
-                            </div>
-                          </div>
+                          )}
                         </div>
+                      </div>
 
-                        {/* Sections Grid */}
-                        <div className="space-y-10">
-                          
-                          {/* Granulometry (Conditional) */}
-                          {activeReport.showGranulometry && (
-                            <section>
-                              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                <Layers size={14} /> Análise Granulométrica
-                              </h3>
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                {[
-                                    { label: 'Retido #35', value: activeReport.meshData.retained35g, total: (activeReport.meshData.retained35g + activeReport.meshData.retained60g + activeReport.meshData.passingG) },
-                                    { label: 'Retido #60', value: activeReport.meshData.retained60g, total: (activeReport.meshData.retained35g + activeReport.meshData.retained60g + activeReport.meshData.passingG) },
-                                    { label: 'Passante', value: activeReport.meshData.passingG, total: (activeReport.meshData.retained35g + activeReport.meshData.retained60g + activeReport.meshData.passingG) },
-                                ].map((item, i) => {
-                                  // Hide item if value is 0 and it's not passing/total, but usually displaying all is safer.
-                                  // However, if Ret60 is 0, user said "Caso Houver, caso não, só 35" in copy text. In UI, it might be cleaner to show 0.
-                                  // Let's keep showing all in UI for clarity, conditional logic applies to copy text.
-                                    const pct = item.total > 0 ? (item.value / item.total) * 100 : 0;
-                                    return (
-                                      <div key={i} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">{item.label}</p>
-                                        <p className="text-xl font-black text-slate-800">{pct.toFixed(2)}%</p>
-                                        <p className="text-xs font-mono text-slate-500 mt-1">{item.value.toFixed(3)}kg</p>
-                                      </div>
-                                    )
-                                })}
-                                <div className="bg-indigo-600 rounded-xl p-4 text-white shadow-lg shadow-indigo-200">
-                                  <p className="text-[10px] font-bold text-indigo-200 uppercase mb-1">Massa Total</p>
-                                  <p className="text-xl font-black">
-                                    {(activeReport.meshData.retained35g + activeReport.meshData.retained60g + activeReport.meshData.passingG).toFixed(3)}kg
-                                  </p>
+                      {/* Main Content */}
+                      <div className="lg:col-span-8">
+                        {activeReport ? (
+                          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+                            {/* Actions Bar */}
+                            <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+                              <div className="flex items-center gap-2">
+                                <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 font-bold text-lg">
+                                  {activeReport.clientName.charAt(0)}
+                                </div>
+                                <div>
+                                  <h2 className="text-sm font-bold text-slate-900">{activeReport.clientName}</h2>
+                                  <p className="text-xs text-slate-500 font-mono">ID: {activeReport.customId}</p>
                                 </div>
                               </div>
-                            </section>
-                          )}
+                              <div className="flex gap-2">
+                                  <Button variant="secondary" onClick={() => handleEdit(activeReport)}>
+                                    <Edit2 size={16} /> <span className="hidden sm:inline">Editar</span>
+                                  </Button>
+                                  <Button variant="secondary" onClick={() => handleCopySummary(activeReport)} className="text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100">
+                                    <Copy size={16} /> <span className="hidden sm:inline">Copiar</span>
+                                  </Button>
+                                  <Button variant="danger" onClick={() => {
+                                    if(confirm("Excluir permanentemente?")) {
+                                      setReports(reports.filter(r => r.id !== activeReport.id));
+                                      setActiveReportId(null);
+                                    }
+                                  }}>
+                                    <Trash2 size={16} />
+                                  </Button>
+                              </div>
+                            </div>
 
-                          {/* Chemical Results */}
-                          <section>
-                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                              <FlaskConical size={14} /> Resultados Químicos
-                            </h3>
-                            <div className="overflow-hidden rounded-xl border border-slate-200">
-                              <table className="w-full text-left bg-white">
-                                <thead className="bg-slate-50 border-b border-slate-200">
-                                  <tr>
-                                    <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase">Elemento</th>
-                                    <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase">Parâmetros (Peso/Vol)</th>
-                                    <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase">Leituras (ppm)</th>
-                                    <th className="py-3 px-4 text-right text-[10px] font-black text-slate-500 uppercase">Teor (%)</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                  {getSortedEntries(activeReport.entries).map(e => (
-                                    <tr key={e.id} className="hover:bg-slate-50/50 transition-colors">
-                                      <td className="py-4 px-4">
-                                        <div className="flex items-center gap-2">
-                                          <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black text-white ${e.element === Element.COPPER ? 'bg-orange-500' : e.element === Element.ZINC ? 'bg-zinc-500' : 'bg-slate-600'}`}>
-                                            {e.element}
-                                          </span>
-                                          <div>
-                                            <p className="text-sm font-bold text-slate-800">
-                                              {e.element === Element.COPPER ? 'Cobre' : e.element === Element.ZINC ? 'Zinco' : 'Chumbo'}
+                            <Card className="p-8 print:shadow-none print:border-none">
+                              {/* Header Report */}
+                              <div className="border-b-2 border-slate-100 pb-8 mb-8 flex justify-between items-start">
+                                <div>
+                                  {/* Left Title: Batch Number */}
+                                  <h1 className="text-3xl font-black text-slate-900 mb-1">{activeReport.clientName}</h1>
+                                  {/* Left Subtitle: Laudo ID */}
+                                  <p className="text-lg font-bold text-indigo-600 mb-3">{activeReport.process}</p>
+
+                                  <div className="flex items-center gap-4 text-sm text-slate-500 font-medium">
+                                    <span className="flex items-center gap-1"><Package size={14} /> Lote: {activeReport.batchNumber}</span>
+                                    <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                                    <span className="flex items-center gap-1"><Layers size={14} /> {activeReport.process}</span>
+                                    <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                                    <span>{new Date(activeReport.timestamp).toLocaleDateString()}</span>
+                                  </div>
+                                </div>
+                                <div className="text-right hidden sm:block">
+                                  {/* Right Box: Batch Number */}
+                                  <div className="inline-block bg-slate-900 text-white px-4 py-2 rounded-lg font-mono font-bold text-lg">
+                                    {activeReport.batchNumber}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Sections Grid */}
+                              <div className="space-y-10">
+
+                                {/* Granulometry (Conditional) */}
+                                {activeReport.showGranulometry && (
+                                  <section>
+                                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                      <Layers size={14} /> Análise Granulométrica
+                                    </h3>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                      {[
+                                          { label: 'Retido #35', value: activeReport.meshData.retained35g, total: (activeReport.meshData.retained35g + activeReport.meshData.retained60g + activeReport.meshData.passingG) },
+                                          { label: 'Retido #60', value: activeReport.meshData.retained60g, total: (activeReport.meshData.retained35g + activeReport.meshData.retained60g + activeReport.meshData.passingG) },
+                                          { label: 'Passante', value: activeReport.meshData.passingG, total: (activeReport.meshData.retained35g + activeReport.meshData.retained60g + activeReport.meshData.passingG) },
+                                      ].map((item, i) => {
+                                        // Hide item if value is 0 and it's not passing/total, but usually displaying all is safer.
+                                        // However, if Ret60 is 0, user said "Caso Houver, caso não, só 35" in copy text. In UI, it might be cleaner to show 0.
+                                        // Let's keep showing all in UI for clarity, conditional logic applies to copy text.
+                                          const pct = item.total > 0 ? (item.value / item.total) * 100 : 0;
+                                          return (
+                                            <div key={i} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                              <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">{item.label}</p>
+                                              <p className="text-xl font-black text-slate-800">{pct.toFixed(2)}%</p>
+                                              <p className="text-xs font-mono text-slate-500 mt-1">{item.value.toFixed(3)}kg</p>
+                                            </div>
+                                          )
+                                      })}
+                                      <div className="bg-indigo-600 rounded-xl p-4 text-white shadow-lg shadow-indigo-200">
+                                        <p className="text-[10px] font-bold text-indigo-200 uppercase mb-1">Massa Total</p>
+                                        <p className="text-xl font-black">
+                                          {(activeReport.meshData.retained35g + activeReport.meshData.retained60g + activeReport.meshData.passingG).toFixed(3)}kg
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </section>
+                                )}
+
+                                {/* Chemical Results */}
+                                <section>
+                                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <FlaskConical size={14} /> Resultados Químicos
+                                  </h3>
+                                  <div className="overflow-hidden rounded-xl border border-slate-200">
+                                    <table className="w-full text-left bg-white">
+                                      <thead className="bg-slate-50 border-b border-slate-200">
+                                        <tr>
+                                          <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase">Elemento</th>
+                                          <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase">Parâmetros (Peso/Vol)</th>
+                                          <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase">Leituras (ppm)</th>
+                                          <th className="py-3 px-4 text-right text-[10px] font-black text-slate-500 uppercase">Teor (%)</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100">
+                                        {getSortedEntries(activeReport.entries).map(e => (
+                                          <tr key={e.id} className="hover:bg-slate-50/50 transition-colors">
+                                            <td className="py-4 px-4">
+                                              <div className="flex items-center gap-2">
+                                                <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black text-white ${e.element === Element.COPPER ? 'bg-orange-500' : e.element === Element.ZINC ? 'bg-zinc-500' : 'bg-slate-600'}`}>
+                                                  {e.element}
+                                                </span>
+                                                <div>
+                                                  <p className="text-sm font-bold text-slate-800">
+                                                    {e.element === Element.COPPER ? 'Cobre' : e.element === Element.ZINC ? 'Zinco' : 'Chumbo'}
+                                                  </p>
+                                                  <p className="text-[10px] font-medium text-slate-400 uppercase">{e.digestion}</p>
+                                                </div>
+                                              </div>
+                                            </td>
+                                            <td className="py-4 px-4">
+                                              <div className="text-xs font-medium text-slate-600 space-y-0.5">
+                                                <span className="inline-block bg-slate-100 px-1.5 py-0.5 rounded text-[10px] mr-1">{e.sampleWeight}g</span>
+                                                <span className="inline-block bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">{e.finalVolume}mL</span>
+                                              </div>
+                                            </td>
+                                            <td className="py-4 px-4">
+                                              <p className="font-mono text-xs font-bold text-slate-600">{e.readings.join(' | ')}</p>
+                                              <p className="text-[10px] text-slate-400 mt-0.5">Média: {e.averagePpm.toFixed(2)}</p>
+                                            </td>
+                                            <td className="py-4 px-4 text-right">
+                                              <span className="text-lg font-black text-indigo-600">{e.finalPercentage.toFixed(2)}%</span>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </section>
+
+                                {/* Photos Section */}
+                                {activeReport.photos && activeReport.photos.length > 0 && (
+                                  <section className="break-inside-avoid">
+                                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                      <Camera size={14} /> Registro Fotográfico
+                                    </h3>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                                      {activeReport.photos.map(photo => (
+                                        <div key={photo.id} className="group relative">
+                                          <div className="aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+                                            <img src={photo.dataUrl} alt="Amostra" className="w-full h-full object-cover" />
+                                          </div>
+                                          <div className="mt-3">
+                                            <p className="text-sm font-medium text-slate-700 italic border-l-2 border-indigo-300 pl-3">
+                                              "{photo.description || 'Sem descrição'}"
                                             </p>
-                                            <p className="text-[10px] font-medium text-slate-400 uppercase">{e.digestion}</p>
                                           </div>
                                         </div>
-                                      </td>
-                                      <td className="py-4 px-4">
-                                        <div className="text-xs font-medium text-slate-600 space-y-0.5">
-                                          <span className="inline-block bg-slate-100 px-1.5 py-0.5 rounded text-[10px] mr-1">{e.sampleWeight}g</span>
-                                          <span className="inline-block bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">{e.finalVolume}mL</span>
-                                        </div>
-                                      </td>
-                                      <td className="py-4 px-4">
-                                        <p className="font-mono text-xs font-bold text-slate-600">{e.readings.join(' | ')}</p>
-                                        <p className="text-[10px] text-slate-400 mt-0.5">Média: {e.averagePpm.toFixed(2)}</p>
-                                      </td>
-                                      <td className="py-4 px-4 text-right">
-                                        <span className="text-lg font-black text-indigo-600">{e.finalPercentage.toFixed(2)}%</span>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
+                                      ))}
+                                    </div>
+                                  </section>
+                                )}
+                              </div>
+
+                              {/* Footer */}
+                              <div className="mt-12 pt-8 border-t border-slate-100 flex justify-between items-center text-[10px] text-slate-400 font-medium uppercase tracking-widest">
+                                <span>Gerado em {new Date().toLocaleDateString()}</span>
+                              </div>
+                            </Card>
+                          </div>
+                        ) : (
+                          <div className="h-full min-h-[600px] flex flex-col items-center justify-center bg-white rounded-3xl border border-slate-200 shadow-sm p-12 text-center">
+                            <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-8 shadow-inner">
+                              <Calculator size={48} className="text-slate-200" strokeWidth={1.5} />
+                            </div>
+                            <h3 className="text-2xl font-black text-slate-800 mb-3 tracking-tight">Central de Análises</h3>
+                            <p className="max-w-md mx-auto text-slate-500 mb-8 leading-relaxed">
+                              Selecione um laudo existente para visualizar os detalhes completos e análises, ou inicie um novo processo.
+                            </p>
+                            <Button onClick={() => setShowForm(true)} className="shadow-xl shadow-indigo-200 hover:shadow-indigo-300">
+                                <Plus size={18} /> Criar Nova Análise
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </main>
+
+                  {/* Modern Form Modal */}
+                  {showForm && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
+                      <div className="bg-white w-full max-w-5xl rounded-3xl shadow-2xl my-auto animate-in zoom-in-95 duration-300 border border-white/50">
+                        {/* Modal Header */}
+                        <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-white/50 backdrop-blur-md sticky top-0 z-10 rounded-t-3xl">
+                          <div>
+                            <h2 className="text-2xl font-black text-slate-800 tracking-tight">
+                              {editingId ? 'Editar Laudo' : 'Nova Análise'}
+                            </h2>
+                            <p className="text-sm text-slate-500 font-medium">Preencha os dados abaixo para gerar o relatório</p>
+                          </div>
+                          <button onClick={() => { setShowForm(false); resetForm(); }} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-600">
+                            <X size={24} />
+                          </button>
+                        </div>
+
+                        <div className="p-8 space-y-12 max-h-[75vh] overflow-y-auto custom-scrollbar">
+
+                          {/* 1. Identification */}
+                          <section>
+                            <SectionHeader icon={<User size={20} />} title="Identificação da Amostra" subtitle="Dados principais do cliente e material" />
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                              <div className="space-y-2 col-span-1">
+                                <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1"><Hash size={12}/> Nº Laudo</label>
+                                <input type="text" className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none font-black text-slate-800 transition-all text-center" value={customId} onChange={e => setCustomId(e.target.value)} placeholder="Auto" />
+                              </div>
+                              <div className="space-y-2 col-span-3 md:col-span-1">
+                                <label className="text-xs font-bold text-slate-500 uppercase">Cliente</label>
+                                {/* Implemented Title Case on Change */}
+                                <input type="text" className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none font-bold text-slate-800 transition-all placeholder:font-normal placeholder:text-slate-400" value={client} onChange={e => setClient(toTitleCase(e.target.value))} placeholder="" />
+                              </div>
+                              <div className="space-y-2 md:col-span-1">
+                                <label className="text-xs font-bold text-slate-500 uppercase">Lote (Opcional)</label>
+                                {/* Implemented Title Case on Change */}
+                                <input type="text" className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none font-bold text-slate-800 transition-all placeholder:font-normal placeholder:text-slate-400" value={batch} onChange={e => setBatch(toTitleCase(e.target.value))} placeholder="" />
+                              </div>
+                              <div className="space-y-2 md:col-span-1">
+                                <label className="text-xs font-bold text-slate-500 uppercase">Processo</label>
+                                {/* Implemented Title Case on Change */}
+                                <input type="text" className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none font-bold text-slate-800 transition-all placeholder:font-normal placeholder:text-slate-400" value={processType} onChange={e => setProcessType(toTitleCase(e.target.value))} placeholder="" />
+                              </div>
                             </div>
                           </section>
 
-                          {/* Photos Section */}
-                          {activeReport.photos && activeReport.photos.length > 0 && (
-                            <section className="break-inside-avoid">
-                              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                <Camera size={14} /> Registro Fotográfico
-                              </h3>
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                                {activeReport.photos.map(photo => (
-                                  <div key={photo.id} className="group relative">
-                                    <div className="aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-sm">
-                                      <img src={photo.dataUrl} alt="Amostra" className="w-full h-full object-cover" />
+                          {/* 2. Granulometry */}
+                          <section>
+                            <SectionHeader
+                              icon={<Layers size={20} />}
+                              title="Granulometria"
+                              subtitle="Distribuição de massa por malha"
+                              action={
+                                <button
+                                  onClick={() => setShowGranulometry(!showGranulometry)}
+                                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${showGranulometry ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-400'}`}
+                                >
+                                  <span className="text-xs font-bold uppercase">{showGranulometry ? 'Ativado' : 'Desativado'}</span>
+                                  {showGranulometry ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+                                </button>
+                              }
+                            />
+
+                            {showGranulometry ? (
+                              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 animate-in fade-in slide-in-from-top-2">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                  {[
+                                    { label: 'Retido em Malha 35', key: 'retained35g', pct: meshPct.m35 },
+                                    { label: 'Retido em Malha 60', key: 'retained60g', pct: meshPct.m60 },
+                                    { label: 'Passante', key: 'passingG', pct: meshPct.pass }
+                                  ].map((field, i) => (
+                                    <div key={i} className="relative group">
+                                      <label className="block text-xs font-bold text-slate-400 uppercase mb-2">{field.label} (kg)</label>
+                                      <div className="relative">
+                                        <input
+                                          type="number"
+                                          step="0.001"
+                                          className="w-full pl-4 pr-16 py-3 bg-white border-2 border-slate-200 rounded-xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 font-bold text-slate-800 transition-all"
+                                          value={meshG[field.key]}
+                                          onChange={e => setMeshG({ ...meshG, [field.key]: Number(e.target.value) })}
+                                        />
+                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded">
+                                          {field.pct.toFixed(1)}%
+                                        </div>
+                                      </div>
                                     </div>
-                                    <div className="mt-3">
-                                      <p className="text-sm font-medium text-slate-700 italic border-l-2 border-indigo-300 pl-3">
-                                        "{photo.description || 'Sem descrição'}"
-                                      </p>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </section>
-                          )}
-                        </div>
-
-                        {/* Footer */}
-                        <div className="mt-12 pt-8 border-t border-slate-100 flex justify-between items-center text-[10px] text-slate-400 font-medium uppercase tracking-widest">
-                          <span>Gerado em {new Date().toLocaleDateString()}</span>
-                        </div>
-                      </Card>
-                    </div>
-                  ) : (
-                    <div className="h-full min-h-[600px] flex flex-col items-center justify-center bg-white rounded-3xl border border-slate-200 shadow-sm p-12 text-center">
-                      <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-8 shadow-inner">
-                        <Calculator size={48} className="text-slate-200" strokeWidth={1.5} />
-                      </div>
-                      <h3 className="text-2xl font-black text-slate-800 mb-3 tracking-tight">Central de Análises</h3>
-                      <p className="max-w-md mx-auto text-slate-500 mb-8 leading-relaxed">
-                        Selecione um laudo existente para visualizar os detalhes completos e análises, ou inicie um novo processo.
-                      </p>
-                      <Button onClick={() => setShowForm(true)} className="shadow-xl shadow-indigo-200 hover:shadow-indigo-300">
-                          <Plus size={18} /> Criar Nova Análise
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </main>
-
-            {/* Modern Form Modal */}
-            {showForm && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
-                <div className="bg-white w-full max-w-5xl rounded-3xl shadow-2xl my-auto animate-in zoom-in-95 duration-300 border border-white/50">
-                  {/* Modal Header */}
-                  <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-white/50 backdrop-blur-md sticky top-0 z-10 rounded-t-3xl">
-                    <div>
-                      <h2 className="text-2xl font-black text-slate-800 tracking-tight">
-                        {editingId ? 'Editar Laudo' : 'Nova Análise'}
-                      </h2>
-                      <p className="text-sm text-slate-500 font-medium">Preencha os dados abaixo para gerar o relatório</p>
-                    </div>
-                    <button onClick={() => { setShowForm(false); resetForm(); }} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-600">
-                      <X size={24} />
-                    </button>
-                  </div>
-                  
-                  <div className="p-8 space-y-12 max-h-[75vh] overflow-y-auto custom-scrollbar">
-                    
-                    {/* 1. Identification */}
-                    <section>
-                      <SectionHeader icon={<User size={20} />} title="Identificação da Amostra" subtitle="Dados principais do cliente e material" />
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                        <div className="space-y-2 col-span-1">
-                          <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1"><Hash size={12}/> Nº Laudo</label>
-                          <input type="text" className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none font-black text-slate-800 transition-all text-center" value={customId} onChange={e => setCustomId(e.target.value)} placeholder="Auto" />
-                        </div>
-                        <div className="space-y-2 col-span-3 md:col-span-1">
-                          <label className="text-xs font-bold text-slate-500 uppercase">Cliente</label>
-                          {/* Implemented Title Case on Change */}
-                          <input type="text" className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none font-bold text-slate-800 transition-all placeholder:font-normal placeholder:text-slate-400" value={client} onChange={e => setClient(toTitleCase(e.target.value))} placeholder="" />
-                        </div>
-                        <div className="space-y-2 md:col-span-1">
-                          <label className="text-xs font-bold text-slate-500 uppercase">Lote (Opcional)</label>
-                          {/* Implemented Title Case on Change */}
-                          <input type="text" className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none font-bold text-slate-800 transition-all placeholder:font-normal placeholder:text-slate-400" value={batch} onChange={e => setBatch(toTitleCase(e.target.value))} placeholder="" />
-                        </div>
-                        <div className="space-y-2 md:col-span-1">
-                          <label className="text-xs font-bold text-slate-500 uppercase">Processo</label>
-                          {/* Implemented Title Case on Change */}
-                          <input type="text" className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none font-bold text-slate-800 transition-all placeholder:font-normal placeholder:text-slate-400" value={processType} onChange={e => setProcessType(toTitleCase(e.target.value))} placeholder="" />
-                        </div>
-                      </div>
-                    </section>
-
-                    {/* 2. Granulometry */}
-                    <section>
-                      <SectionHeader 
-                        icon={<Layers size={20} />} 
-                        title="Granulometria" 
-                        subtitle="Distribuição de massa por malha"
-                        action={
-                          <button 
-                            onClick={() => setShowGranulometry(!showGranulometry)}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${showGranulometry ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-400'}`}
-                          >
-                            <span className="text-xs font-bold uppercase">{showGranulometry ? 'Ativado' : 'Desativado'}</span>
-                            {showGranulometry ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
-                          </button>
-                        } 
-                      />
-                      
-                      {showGranulometry ? (
-                        <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 animate-in fade-in slide-in-from-top-2">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                            {[
-                              { label: 'Retido em Malha 35', key: 'retained35g', pct: meshPct.m35 },
-                              { label: 'Retido em Malha 60', key: 'retained60g', pct: meshPct.m60 },
-                              { label: 'Passante', key: 'passingG', pct: meshPct.pass }
-                            ].map((field, i) => (
-                              <div key={i} className="relative group">
-                                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">{field.label} (kg)</label>
-                                <div className="relative">
-                                  <input 
-                                    type="number" 
-                                    step="0.001"
-                                    className="w-full pl-4 pr-16 py-3 bg-white border-2 border-slate-200 rounded-xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 font-bold text-slate-800 transition-all"
-                                    value={meshG[field.key]}
-                                    onChange={e => setMeshG({ ...meshG, [field.key]: Number(e.target.value) })}
-                                  />
-                                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded">
-                                    {field.pct.toFixed(1)}%
-                                  </div>
+                                  ))}
+                                </div>
+                                <div className="mt-4 pt-4 border-t border-slate-200 flex justify-end">
+                                  <p className="text-sm font-medium text-slate-500">Massa Total: <span className="font-bold text-slate-800">{totalG.toFixed(3)}kg</span></p>
                                 </div>
                               </div>
-                            ))}
-                          </div>
-                          <div className="mt-4 pt-4 border-t border-slate-200 flex justify-end">
-                            <p className="text-sm font-medium text-slate-500">Massa Total: <span className="font-bold text-slate-800">{totalG.toFixed(3)}kg</span></p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl p-6 text-center text-slate-400 text-sm">
-                          Análise granulométrica desativada. Ative para inserir dados de malha.
-                        </div>
-                      )}
-                    </section>
+                            ) : (
+                              <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl p-6 text-center text-slate-400 text-sm">
+                                Análise granulométrica desativada. Ative para inserir dados de malha.
+                              </div>
+                            )}
+                          </section>
 
-                    {/* 3. Chemical Analysis */}
-                    <section>
-                      <div className="flex justify-between items-end mb-6">
-                        <SectionHeader icon={<FlaskConical size={20} />} title="Análises Químicas" subtitle="Absorção Atômica" />
-                        <Button variant="outline" onClick={addEntry} className="mb-4">
-                          <Plus size={16} /> Adicionar Elemento
-                        </Button>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        {entries.length === 0 && (
-                          <div className="text-center py-10 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
-                            <p className="text-slate-400 text-sm font-medium">Nenhum elemento adicionado ainda.</p>
-                          </div>
-                        )}
-                        {entries.map((e, idx) => (
-                          <div key={e.id} className="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow relative">
-                            <button 
-                              onClick={() => setEntries(entries.filter(item => item.id !== e.id))} 
-                              className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-
-                            <div className="grid grid-cols-1 md:grid-cols-6 gap-6 items-start mb-6">
-                              <div className="md:col-span-1 space-y-2">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">Elemento</label>
-                                <select className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all" value={e.element} onChange={evt => updateEntry(e.id, { element: evt.target.value })}>
-                                  {Object.values(Element).map(v => <option key={v} value={v}>{v}</option>)}
-                                </select>
-                              </div>
-                              <div className="md:col-span-1 space-y-2">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">Digestão</label>
-                                <select className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all" value={e.digestion} onChange={evt => updateEntry(e.id, { digestion: evt.target.value })}>
-                                  {Object.values(DigestionMethod).map(v => <option key={v} value={v}>{v}</option>)}
-                                </select>
-                              </div>
-                              <div className="md:col-span-1 space-y-2">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">Peso (g)</label>
-                                <input type="number" step="0.0001" className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-lg font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all" value={e.sampleWeight} onChange={evt => updateEntry(e.id, { sampleWeight: Number(evt.target.value) })} />
-                              </div>
-                              <div className="md:col-span-1 space-y-2">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">Volume (mL)</label>
-                                <input type="number" className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-lg font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all" value={e.finalVolume} onChange={evt => updateEntry(e.id, { finalVolume: Number(evt.target.value) })} />
-                              </div>
-                              <div className="md:col-span-1 space-y-2">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">Alíquota</label>
-                                <input type="number" className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-lg font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all" value={e.dilutionFactor} onChange={evt => updateEntry(e.id, { dilutionFactor: Number(evt.target.value) })} />
-                              </div>
-                              <div className="md:col-span-1 flex flex-col items-center justify-center bg-indigo-600 rounded-xl p-2 text-white shadow-md shadow-indigo-200 h-full mt-1">
-                                <span className="text-[9px] font-bold uppercase opacity-80 mb-1">Resultado</span>
-                                <span className="text-lg font-black">{e.finalPercentage.toFixed(3)}%</span>
-                              </div>
+                          {/* 3. Chemical Analysis */}
+                          <section>
+                            <div className="flex justify-between items-end mb-6">
+                              <SectionHeader icon={<FlaskConical size={20} />} title="Análises Químicas" subtitle="Absorção Atômica" />
+                              <Button variant="outline" onClick={addEntry} className="mb-4">
+                                <Plus size={16} /> Adicionar Elemento
+                              </Button>
                             </div>
 
-                            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                              <div className="flex items-center justify-between mb-3">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">Leituras (ppm)</label>
-                                <button onClick={() => updateEntry(e.id, { readings: [...e.readings, ''] })} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
-                                  <Plus size={12} /> Add Duplicata
-                                </button>
-                              </div>
-                              <div className="flex flex-wrap gap-3">
-                                {e.readings.map((r, rIdx) => (
-                                  <div key={rIdx} className="flex items-center bg-white border-2 border-slate-200 rounded-xl shadow-sm focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-100 transition-all overflow-hidden group">
-                                    <span className="px-3 py-2.5 text-xs font-black text-slate-400 bg-slate-50 border-r-2 border-slate-100 group-focus-within:bg-indigo-50 group-focus-within:text-indigo-500 transition-colors select-none">#{rIdx+1}</span>
-                                    <input 
-                                      type="number" 
-                                      step="0.01" 
-                                      className="w-24 p-2.5 text-base font-black text-slate-800 bg-white outline-none placeholder:text-slate-300" 
-                                      value={r} 
-                                      onChange={evt => {
-                                        const nr = [...e.readings];
-                                        nr[rIdx] = evt.target.value; 
-                                        updateEntry(e.id, { readings: nr });
-                                      }}
-                                    />
-                                    {e.readings.length > 1 && (
-                                      <button onClick={() => {
-                                        const nr = [...e.readings];
-                                        nr.splice(rIdx, 1);
-                                        updateEntry(e.id, { readings: nr });
-                                      }} className="px-3 py-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 border-l-2 border-slate-100 transition-colors">
-                                        <X size={14} />
-                                      </button>
-                                    )}
+                            <div className="space-y-4">
+                              {entries.length === 0 && (
+                                <div className="text-center py-10 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+                                  <p className="text-slate-400 text-sm font-medium">Nenhum elemento adicionado ainda.</p>
+                                </div>
+                              )}
+                              {entries.map((e, idx) => (
+                                <div key={e.id} className="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow relative">
+                                  <button
+                                    onClick={() => setEntries(entries.filter(item => item.id !== e.id))}
+                                    className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                  >
+                                    <Trash2 size={18} />
+                                  </button>
+
+                                  <div className="grid grid-cols-1 md:grid-cols-6 gap-6 items-start mb-6">
+                                    <div className="md:col-span-1 space-y-2">
+                                      <label className="text-[10px] font-bold text-slate-400 uppercase">Elemento</label>
+                                      <select className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all" value={e.element} onChange={evt => updateEntry(e.id, { element: evt.target.value })}>
+                                        {Object.values(Element).map(v => <option key={v} value={v}>{v}</option>)}
+                                      </select>
+                                    </div>
+                                    <div className="md:col-span-1 space-y-2">
+                                      <label className="text-[10px] font-bold text-slate-400 uppercase">Digestão</label>
+                                      <select className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all" value={e.digestion} onChange={evt => updateEntry(e.id, { digestion: evt.target.value })}>
+                                        {Object.values(DigestionMethod).map(v => <option key={v} value={v}>{v}</option>)}
+                                      </select>
+                                    </div>
+                                    <div className="md:col-span-1 space-y-2">
+                                      <label className="text-[10px] font-bold text-slate-400 uppercase">Peso (g)</label>
+                                      <input type="number" step="0.0001" className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-lg font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all" value={e.sampleWeight} onChange={evt => updateEntry(e.id, { sampleWeight: Number(evt.target.value) })} />
+                                    </div>
+                                    <div className="md:col-span-1 space-y-2">
+                                      <label className="text-[10px] font-bold text-slate-400 uppercase">Volume (mL)</label>
+                                      <input type="number" className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-lg font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all" value={e.finalVolume} onChange={evt => updateEntry(e.id, { finalVolume: Number(evt.target.value) })} />
+                                    </div>
+                                    <div className="md:col-span-1 space-y-2">
+                                      <label className="text-[10px] font-bold text-slate-400 uppercase">Alíquota</label>
+                                      <input type="number" className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-lg font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all" value={e.dilutionFactor} onChange={evt => updateEntry(e.id, { dilutionFactor: Number(evt.target.value) })} />
+                                    </div>
+                                    <div className="md:col-span-1 flex flex-col items-center justify-center bg-indigo-600 rounded-xl p-2 text-white shadow-md shadow-indigo-200 h-full mt-1">
+                                      <span className="text-[9px] font-bold uppercase opacity-80 mb-1">Resultado</span>
+                                      <span className="text-lg font-black">{e.finalPercentage.toFixed(3)}%</span>
+                                    </div>
                                   </div>
-                                ))}
-                              </div>
+
+                                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                    <div className="flex items-center justify-between mb-3">
+                                      <label className="text-[10px] font-bold text-slate-400 uppercase">Leituras (ppm)</label>
+                                      <button onClick={() => updateEntry(e.id, { readings: [...e.readings, ''] })} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
+                                        <Plus size={12} /> Add Duplicata
+                                      </button>
+                                    </div>
+                                    <div className="flex flex-wrap gap-3">
+                                      {e.readings.map((r, rIdx) => (
+                                        <div key={rIdx} className="flex items-center bg-white border-2 border-slate-200 rounded-xl shadow-sm focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-100 transition-all overflow-hidden group">
+                                          <span className="px-3 py-2.5 text-xs font-black text-slate-400 bg-slate-50 border-r-2 border-slate-100 group-focus-within:bg-indigo-50 group-focus-within:text-indigo-500 transition-colors select-none">#{rIdx+1}</span>
+                                          <input
+                                            type="number"
+                                            step="0.01"
+                                            className="w-24 p-2.5 text-base font-black text-slate-800 bg-white outline-none placeholder:text-slate-300"
+                                            value={r}
+                                            onChange={evt => {
+                                              const nr = [...e.readings];
+                                              nr[rIdx] = evt.target.value;
+                                              updateEntry(e.id, { readings: nr });
+                                            }}
+                                          />
+                                          {e.readings.length > 1 && (
+                                            <button onClick={() => {
+                                              const nr = [...e.readings];
+                                              nr.splice(rIdx, 1);
+                                              updateEntry(e.id, { readings: nr });
+                                            }} className="px-3 py-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 border-l-2 border-slate-100 transition-colors">
+                                              <X size={14} />
+                                            </button>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
-                          </div>
-                        ))}
+                          </section>
+
+                        </div>
+
+                        {/* Footer Actions */}
+                        <div className="p-8 border-t border-slate-100 bg-slate-50/50 rounded-b-3xl flex justify-end gap-3 sticky bottom-0 backdrop-blur-md">
+                          <Button variant="ghost" onClick={() => { setShowForm(false); resetForm(); }}>Cancelar</Button>
+                          <Button onClick={saveReport} className="px-8 shadow-indigo-300">
+                            {editingId ? 'Atualizar Laudo' : 'Salvar e Gerar Laudo'}
+                          </Button>
+                        </div>
                       </div>
-                    </section>
+                    </div>
+                  )}
 
-                  </div>
-
-                  {/* Footer Actions */}
-                  <div className="p-8 border-t border-slate-100 bg-slate-50/50 rounded-b-3xl flex justify-end gap-3 sticky bottom-0 backdrop-blur-md">
-                    <Button variant="ghost" onClick={() => { setShowForm(false); resetForm(); }}>Cancelar</Button>
-                    <Button onClick={saveReport} className="px-8 shadow-indigo-300">
-                      {editingId ? 'Atualizar Laudo' : 'Salvar e Gerar Laudo'}
-                    </Button>
-                  </div>
+                  {/* Styles for Printing */}
+                  <style>{`
+                    @media print {
+                      @page { margin: 1cm; size: auto; }
+                      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: white; }
+                      header, footer, button, .no-print, .lg\\:col-span-4, .sticky { display: none !important; }
+                      main { padding: 0 !important; margin: 0 !important; max-width: 100% !important; }
+                      .lg\\:col-span-8 { width: 100% !important; grid-column: span 12 !important; }
+                      .shadow-xl, .shadow-lg, .shadow-md, .shadow-sm { box-shadow: none !important; }
+                      .border { border-color: #e2e8f0 !important; }
+                      .bg-slate-50 { background-color: #f8fafc !important; }
+                      .text-slate-400 { color: #64748b !important; }
+                      .break-inside-avoid { break-inside: avoid; }
+                    }
+                    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+                    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                    .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
+                  `}</style>
                 </div>
-              </div>
-            )}
+              );
+            }
 
-            {/* Styles for Printing */}
-            <style>{`
-              @media print {
-                @page { margin: 1cm; size: auto; }
-                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: white; }
-                header, footer, button, .no-print, .lg\\:col-span-4, .sticky { display: none !important; }
-                main { padding: 0 !important; margin: 0 !important; max-width: 100% !important; }
-                .lg\\:col-span-8 { width: 100% !important; grid-column: span 12 !important; }
-                .shadow-xl, .shadow-lg, .shadow-md, .shadow-sm { box-shadow: none !important; }
-                .border { border-color: #e2e8f0 !important; }
-                .bg-slate-50 { background-color: #f8fafc !important; }
-                .text-slate-400 { color: #64748b !important; }
-                .break-inside-avoid { break-inside: avoid; }
-              }
-              .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-              .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-              .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
-            `}</style>
-          </div>
-        );
-      }
-
-      const root = createRoot(document.getElementById('root'));
-      root.render(<App />);
+            const root = createRoot(document.getElementById('root'));
+            root.render(<App />);
     </script>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>
