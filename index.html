@@ -406,13 +406,13 @@
                     "Cliente": r.clientName,
                     "Lote": r.batchNumber,
                     "Processo": r.process,
+                    "Digestão": `${e.element} ${e.digestion}`,
+                    "Resultado (%)": e.finalPercentage.toFixed(2),
                     "Granulometria": r.showGranulometry ? "Sim" : "Não",
                     "Peso Total (kg)": r.showGranulometry ? tot.toFixed(3) : "-",
                     "Retido 35 (kg)": r.showGranulometry ? r.meshData.retained35g.toFixed(3) : "-",
                     "Retido 60 (kg)": r.showGranulometry ? r.meshData.retained60g.toFixed(3) : "-",
-                    "Passante (kg)": r.showGranulometry ? r.meshData.passingG.toFixed(3) : "-",
-                    "Digestão": `${e.element} ${e.digestion}`,
-                    "Resultado (%)": e.finalPercentage.toFixed(2)
+                    "Passante (kg)": r.showGranulometry ? r.meshData.passingG.toFixed(3) : "-"
                   }));
                 });
                 const ws = XLSX.utils.json_to_sheet(data);
